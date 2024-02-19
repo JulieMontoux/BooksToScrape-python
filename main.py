@@ -1,8 +1,32 @@
 import requests
 from bs4 import BeautifulSoup
 import csv
+import time
 
 def scrape_book_details(url):
+    response = requests.get(url)
+    if response.status_code == 200:
+        soup = BeautifulSoup(response.content, 'html.parser')
+        books = soup.find_all('h3') 
+        
+        all_books_data = []
+        
+        for book in books:
+            book_url = book.find('a')['href']
+            book_full_url = url.rsplit('/', 1)[0] + '/' + book_url
+            
+            book_data = scrape_book_info(book_full_url)
+            if book_data:
+                all_books_data.append(book_data)
+            
+            time.sleep(1)
+        
+        return all_books_data
+    else:
+        print("Failed to retrieve page:", url)
+        return None
+
+def scrape_book_info(url):
     response = requests.get(url)
     if response.status_code == 200:
         soup = BeautifulSoup(response.content, 'html.parser')
@@ -50,11 +74,17 @@ def write_to_csv(data, filename):
             writer.writerow(item)
 
 if __name__ == "__main__":
-    url = "http://books.toscrape.com/catalogue/a-light-in-the-attic_1000/index.html"
+    category_url = "http://books.toscrape.com/catalogue/category/books/mystery_3/index.html"
     
-    book_details = scrape_book_details(url)
-    if book_details:
-        write_to_csv([book_details], 'scraped_book_details.csv')
-        print("Scraping completed successfully.")
-    else:
-        print("Scraping failed.")
+    all_books_data = []
+    page_num = 1
+    while True:
+        url = category_url if page_num == 1 else category_url.replace('index.html', f'page-{page_num}.html')
+        page_books_data = scrape_book_details(url)
+        if not page_books_data:
+            break
+        all_books_data.extend(page_books_data)
+        page_num += 1
+    
+    write_to_csv(all_books_data, 'scraped_books_category.csv')
+    print("Scraping completed successfully.")
