@@ -5,9 +5,9 @@ import requests
 from urllib.parse import urljoin
 from bs4 import BeautifulSoup
 import csv
-import time
 import concurrent.futures
 from collections import defaultdict
+import matplotlib.pyplot as plt
 
 def scrape_categories(url):
     response = requests.get(url)
@@ -18,7 +18,7 @@ def scrape_categories(url):
         category_urls = [urljoin(url, category['href']) for category in categories_list]
         return category_urls
     else:
-        print("Failed to retrieve categories from:", url)
+        print("Échec de la récupération de la page:", url)
         return []
 
 def scrape_book_details(category_url):
@@ -37,7 +37,7 @@ def scrape_book_details(category_url):
         
         return all_books_data
     else:
-        print("Failed to retrieve page:", category_url)
+        print("Échec de la récupération de la page:", category_url)
         return None
 
 def scrape_book_info(book_url):
@@ -76,7 +76,7 @@ def scrape_book_info(book_url):
             'image_url': image_url
         }
     else:
-        print("Failed to retrieve page:", book_url)
+        print("Échec de la récupération de la page:", book_url)
         return None
 
 def write_to_csv(data, category, data_dir):
@@ -105,9 +105,9 @@ def download_image(image_url, category, data_dir):
         image_path = os.path.join(image_dir, image_name)
         with open(image_path, 'wb') as f:
             f.write(response.content)
-        print(f"Image downloaded: {image_name}")
+        print(f"Image téléchargée: {image_name}")
     else:
-        print("Failed to download image:", image_url)
+        print("Échec du téléchargement de l'image :", image_url)
 
 def read_books_data_from_csv(root_folder):
     category_books_data = defaultdict(list)
@@ -152,6 +152,28 @@ def write_books_details_csv(category_details, filename='books_details_by_categor
                              'books_count': details['books_count'],
                              'average_price': details['average_price']})
 
+def plot_books_count_pie_chart(category_details):
+    labels = category_details.keys()
+    sizes = [details['books_count'] for details in category_details.values()]
+    plt.figure(figsize=(10, 6))
+    plt.pie(sizes, labels=labels, autopct='%1.1f%%', startangle=140)
+    plt.title('Nombres de livres par catégorie')
+    plt.axis('equal')
+    plt.tight_layout()
+    plt.savefig('circular_diagram.png')
+
+def plot_average_price_histogram(category_details):
+    labels = category_details.keys()
+    average_prices = [details['average_price'] for details in category_details.values()]
+    plt.figure(figsize=(10, 6))
+    plt.bar(labels, average_prices, color='skyblue')
+    plt.xlabel('Catégorie')
+    plt.ylabel('Prix moyen')
+    plt.title('Prix moyen des livres par catégorie')
+    plt.xticks(rotation=45, ha='right')
+    plt.tight_layout()
+    plt.savefig('histogram.png')
+
 if __name__ == "__main__":
     base_url = "http://books.toscrape.com/catalogue/category/books_1/index.html"
     categories_urls = scrape_categories(base_url)
@@ -163,7 +185,7 @@ if __name__ == "__main__":
     with concurrent.futures.ThreadPoolExecutor() as executor:
         for category_url in categories_urls:
             category_name = category_url.split('/')[-2]
-            print("Scraping category:", category_name)
+            print("Scrapping de la catégorie:", category_name)
             
             all_books_urls = scrape_book_details(category_url)
             if all_books_urls:
@@ -173,10 +195,13 @@ if __name__ == "__main__":
                 if not os.path.exists(category_dir):
                     os.makedirs(category_dir)
                 write_to_csv(all_books_data, category_name, data_dir)
-                print(f"Scraping completed successfully for category: {category_name}.")
+                print(f"Scraping terminé avec succès pour la catégorie: {category_name}.")
                 for book in all_books_data:
                     download_image(book['image_url'], category_name, data_dir)
 
     category_books_data = read_books_data_from_csv(data_dir)
     category_details = generate_books_details_by_category(category_books_data)
     write_books_details_csv(category_details)
+
+    plot_books_count_pie_chart(category_details)
+    plot_average_price_histogram(category_details)
