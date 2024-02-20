@@ -1,9 +1,11 @@
 import os
+import random
+import string
 import requests
+from urllib.parse import urljoin
 from bs4 import BeautifulSoup
 import csv
 import time
-from urllib.parse import urljoin
 
 def scrape_categories(url):
     response = requests.get(url)
@@ -21,8 +23,8 @@ def scrape_book_details(url):
     response = requests.get(url)
     if response.status_code == 200:
         soup = BeautifulSoup(response.content, 'html.parser')
-        books = soup.find_all('h3')
-        
+        books = soup.find_all('h3')  
+
         all_books_data = []
         
         for book in books:
@@ -54,10 +56,8 @@ def scrape_book_info(url):
         product_description = soup.find('meta', {'name': 'description'})['content']
         category = soup.find('ul', class_='breadcrumb').find_all('a')[2].text.strip()
         review_rating = soup.find('p', class_='star-rating')['class'][1]
-        image_url = soup.find('img')['src']
+        image_url = urljoin(url, soup.find('img')['src'])
 
-        image_url = urljoin(url, image_url)
-        
         start_index = availability.find('(')
         end_index = availability.find(' available)')
         if start_index != -1 and end_index != -1:
@@ -81,13 +81,13 @@ def scrape_book_info(url):
         print("Failed to retrieve page:", url)
         return None
 
-def write_to_csv(data, category_name):
-    directory = 'scraped_books'
-    if not os.path.exists(directory):
-        os.makedirs(directory)
-    
-    filename = f'{directory}/{category_name}_books.csv'
-    with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
+def write_to_csv(data, category, data_dir):
+    filename = f'scraped_books_{category}.csv'
+    category_dir = os.path.join(data_dir, category)
+    if not os.path.exists(category_dir):
+        os.makedirs(category_dir)
+    file_path = os.path.join(category_dir, filename)
+    with open(file_path, 'w', newline='', encoding='utf-8') as csvfile:
         fieldnames = data[0].keys()
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         
@@ -95,13 +95,40 @@ def write_to_csv(data, category_name):
         for item in data:
             writer.writerow(item)
 
+
+def download_image(image_url, category, data_dir):
+    response = requests.get(image_url)
+    if response.status_code == 200:
+        random_string = ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
+        image_name = f"{category}_{random_string}.png"
+        image_dir = os.path.join(data_dir, category, "images")
+        if not os.path.exists(image_dir):
+            os.makedirs(image_dir)
+        image_path = os.path.join(image_dir, image_name)
+        with open(image_path, 'wb') as f:
+            f.write(response.content)
+        print(f"Image downloaded: {image_name}")
+    else:
+        print("Failed to download image:", image_url)
+
 if __name__ == "__main__":
     base_url = "http://books.toscrape.com/catalogue/category/books_1/index.html"
-    category_urls = scrape_categories(base_url)
-
-    for category_url in category_urls:
+    categories_urls = scrape_categories(base_url)
+    
+    data_dir = "data"
+    if not os.path.exists(data_dir):
+        os.makedirs(data_dir)
+    
+    for category_url in categories_urls:
         category_name = category_url.split('/')[-2]
-        books_data = scrape_book_details(category_url)
-        if books_data:
-            write_to_csv(books_data, category_name)
+        print("Scraping category:", category_name)
+        
+        all_books_data = scrape_book_details(category_url)
+        if all_books_data:
+            category_dir = os.path.join(data_dir, category_name)
+            if not os.path.exists(category_dir):
+                os.makedirs(category_dir)
+            write_to_csv(all_books_data, category_name, data_dir)
             print(f"Scraping completed successfully for category: {category_name}.")
+            for book in all_books_data:
+                download_image(book['image_url'], category_name, data_dir)
