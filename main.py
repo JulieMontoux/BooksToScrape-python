@@ -6,6 +6,7 @@ from urllib.parse import urljoin
 from bs4 import BeautifulSoup
 import csv
 import time
+import concurrent.futures
 
 def scrape_categories(url):
     response = requests.get(url)
@@ -19,8 +20,8 @@ def scrape_categories(url):
         print("Failed to retrieve categories from:", url)
         return []
 
-def scrape_book_details(url):
-    response = requests.get(url)
+def scrape_book_details(category_url):
+    response = requests.get(category_url)
     if response.status_code == 200:
         soup = BeautifulSoup(response.content, 'html.parser')
         books = soup.find_all('h3')  
@@ -29,25 +30,21 @@ def scrape_book_details(url):
         
         for book in books:
             book_url = book.find('a')['href']
-            book_full_url = urljoin(url, book_url)
+            book_full_url = urljoin(category_url, book_url)
             
-            book_data = scrape_book_info(book_full_url)
-            if book_data:
-                all_books_data.append(book_data)
-            
-            time.sleep(1)
+            all_books_data.append(book_full_url)
         
         return all_books_data
     else:
-        print("Failed to retrieve page:", url)
+        print("Failed to retrieve page:", category_url)
         return None
 
-def scrape_book_info(url):
-    response = requests.get(url)
+def scrape_book_info(book_url):
+    response = requests.get(book_url)
     if response.status_code == 200:
         soup = BeautifulSoup(response.content, 'html.parser')
         
-        product_page_url = url
+        product_page_url = book_url
         title = soup.find('h1').text.strip()
         upc = soup.select_one('th:-soup-contains("UPC") + td').text.strip()
         price_including_tax = soup.select_one('th:-soup-contains("Price (incl. tax)") + td').text.strip()[1:]
@@ -56,7 +53,7 @@ def scrape_book_info(url):
         product_description = soup.find('meta', {'name': 'description'})['content']
         category = soup.find('ul', class_='breadcrumb').find_all('a')[2].text.strip()
         review_rating = soup.find('p', class_='star-rating')['class'][1]
-        image_url = urljoin(url, soup.find('img')['src'])
+        image_url = urljoin(book_url, soup.find('img')['src'])
 
         start_index = availability.find('(')
         end_index = availability.find(' available)')
@@ -78,7 +75,7 @@ def scrape_book_info(url):
             'image_url': image_url
         }
     else:
-        print("Failed to retrieve page:", url)
+        print("Failed to retrieve page:", book_url)
         return None
 
 def write_to_csv(data, category, data_dir):
@@ -119,16 +116,19 @@ if __name__ == "__main__":
     if not os.path.exists(data_dir):
         os.makedirs(data_dir)
     
-    for category_url in categories_urls:
-        category_name = category_url.split('/')[-2]
-        print("Scraping category:", category_name)
-        
-        all_books_data = scrape_book_details(category_url)
-        if all_books_data:
-            category_dir = os.path.join(data_dir, category_name)
-            if not os.path.exists(category_dir):
-                os.makedirs(category_dir)
-            write_to_csv(all_books_data, category_name, data_dir)
-            print(f"Scraping completed successfully for category: {category_name}.")
-            for book in all_books_data:
-                download_image(book['image_url'], category_name, data_dir)
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        for category_url in categories_urls:
+            category_name = category_url.split('/')[-2]
+            print("Scraping category:", category_name)
+            
+            all_books_urls = scrape_book_details(category_url)
+            if all_books_urls:
+                all_books_data = list(executor.map(scrape_book_info, all_books_urls))
+                
+                category_dir = os.path.join(data_dir, category_name)
+                if not os.path.exists(category_dir):
+                    os.makedirs(category_dir)
+                write_to_csv(all_books_data, category_name, data_dir)
+                print(f"Scraping completed successfully for category: {category_name}.")
+                for book in all_books_data:
+                    download_image(book['image_url'], category_name, data_dir)
