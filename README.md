@@ -16,5 +16,5 @@ Lancez le scraper en exécutant `python main.py` et admirer le travail !
 ## Structure des Fichiers
 
 - Le répertoire principal contient le fichier `main.py` et `README.md`.
-- Les données scrapées sont stockées dans des fichiers CSV, un par catégorie, dans le sous-dossier `/data`.
+- Les données scrapées sont stockées dans des fichiers CSV, un par catégorie, dans le dossier `/data`.
 - Les images de couverture sont téléchargées dans le sous-dossier `/images`, organisées par catégorie.
