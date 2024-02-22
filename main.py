@@ -24,19 +24,27 @@ def scrape_categories(url):
 
 # SCRAPPING DES LIVRES
 def scrape_book_details(category_url):
-    response = requests.get(category_url)
-    if response.status_code == 200:
-        soup = BeautifulSoup(response.content, 'html.parser')
-        books = soup.find_all('h3')  
-        all_books_data = []
-        for book in books:
-            book_url = book.find('a')['href']
-            book_full_url = urljoin(category_url, book_url)
-            all_books_data.append(book_full_url)
-        return all_books_data
-    else:
-        print("Échec de la récupération de la page:", category_url)
-        return None
+    all_books_data = []
+    category_url = category_url.replace("index.html", "page-1.html")
+    page_number = 1
+    while True:
+        response = requests.get(category_url)
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.content, 'html.parser')
+            books = soup.find_all('h3')
+            if not books:
+                break
+            for book in books:
+                book_url = book.find('a')['href']
+                book_full_url = urljoin(category_url, book_url)
+                all_books_data.append(book_full_url)
+            page_number += 1
+            category_url = category_url.replace(f"page-{page_number - 1}.html", f"page-{page_number}.html")
+        else:
+            print("Échec de la récupération de la page:", category_url)
+            break
+    return all_books_data
+
 
 # SCRAPPING D UN LIVRE
 def scrape_book_info(book_url):
@@ -51,7 +59,11 @@ def scrape_book_info(book_url):
         availability = soup.select_one('th:-soup-contains("Availability") + td').text.strip()
         product_description = soup.find('meta', {'name': 'description'})['content']
         category = soup.find('ul', class_='breadcrumb').find_all('a')[2].text.strip()
-        review_rating = soup.find('p', class_='star-rating')['class'][1]
+        # Mapping des classes CSS à des valeurs numériques
+        rating_map = {'One': 1, 'Two': 2, 'Three': 3, 'Four': 4, 'Five': 5}
+        # Extrait la classe CSS et convertit en nombre
+        review_rating_class = soup.find('p', class_='star-rating')['class'][1]
+        review_rating = rating_map.get(review_rating_class, 0)  # Par défaut, 0 si la classe n'est pas trouvée
         image_url = urljoin(book_url, soup.find('img')['src'])
         start_index = availability.find('(')
         end_index = availability.find(' available)')
